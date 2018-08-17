@@ -86,7 +86,7 @@ for ax,im in zip(axlist,imlist):
     ax.imshow(im)
 ```
 
-![png](master/outputs/calibration.png)
+![png](/outputs/calibration.png)
 
 
 ### Find Chessboard Inner Corners
