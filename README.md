@@ -7,6 +7,8 @@
 ### Goals
 Accurate and robust detection of lane lines, lane curvature, and vehicle position with visual display output.  
 
+![png](/outputs/lane_detection.png)
+
 ###  Implementation Outline
 * Compute the camera calibration matrix and distortion coefficients given a set of chessboard images.
 * Apply a distortion correction to raw images.
@@ -120,7 +122,7 @@ for img,pts,ax in zip(mrkdimgs,imgpts,axlist):
 ```
 
 
-![png](calibration_corners.png)
+![png](/outputs/calibration_corners.png)
 
 
 ### Calibration and Distortion Correction
@@ -159,7 +161,7 @@ all(ax.imshow(im) for im,ax in zip(test, plt.subplots(3,3)[1].ravel()))
 
 
 
-![png](test.png)
+![png](/outputs/test.png)
 
 
 #### Apply Correction 
@@ -175,7 +177,7 @@ all(ax.imshow(im) for im,ax in zip(undist, plt.subplots(3,3)[1].ravel()))
 
 
 
-![png](corrected_tes.png)
+![png](/outputs/corrected_tes.png)
 
 
 ### Illustration
@@ -190,8 +192,6 @@ all(ax.imshow(im) for im,ax in zip(calib, plt.subplots(3,3)[1].ravel()))
 
 
 
-
-    True
 
 
 
@@ -223,20 +223,15 @@ all(ax.imshow(im[...,2]) for im,ax in zip(hsv, axlist))
 
 
 
-    True
+![png](/outputs/hue.png)
 
 
 
-
-![png](hue.png)
-
-
-
-![png](saturation.png)
+![png](/outputs/saturation.png)
 
 
 
-![png](intensity.png)
+![png](/outputs/intensity.png)
 
 
 ### Threshold Binarization
@@ -266,12 +261,7 @@ all(ax.imshow(im) for im,ax in zip(binary,plt.subplots(3,3)[1].ravel()))
 
 
 
-    True
-
-
-
-
-![png](binary.png)
+![png](/outputs/binary.png)
 
 
 ## Perspective Transformation
@@ -317,12 +307,9 @@ all(ax.imshow(im) for im,ax in zip(persp, plt.subplots(3,3)[1].ravel()))
 
 
 
-    True
 
 
-
-
-![png](perspective.png)
+![png](/outputs/perspective.png)
 
 
 ## Polynomial Fit
@@ -379,12 +366,10 @@ all(ax.imshow(im) for im,ax in zip(overlay, plt.subplots(3,3)[1].ravel()))
 
 
 
-    True
 
 
 
-
-![png](lane_overlay.png)
+![png](/outputs/lane_overlay.png)
 
 
 ### Curvature Estimation
@@ -446,12 +431,9 @@ all(ax.imshow(im) for im,ax in zip(output, plt.subplots(3,3)[1].ravel()))
 
 
 
-    True
 
 
-
-
-![png](final_overlay.png)
+![png](/outputs/final_overlay.png)
 
 
 ## Video Pipeline
@@ -618,7 +600,8 @@ process.old_radius = 100
 ### Video Frame Extraction
 
 #### Project Video
-
+[Link to Video](output_project_video.mp4)
+![image from video](/outputs/lane_detection_2.png)
 
 ```python
 video = VideoFileClip("project_video.mp4")
