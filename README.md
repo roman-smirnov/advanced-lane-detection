@@ -645,10 +645,7 @@ processed_video = video.fl_image(process)
 processed_video.write_videofile("output_video.mp4", audio=False, progress_bar=False)
 ```
 
-    [MoviePy] >>>> Building video output_video.mp4
-    [MoviePy] Writing video output_video.mp4
-    [MoviePy] Done.
-    [MoviePy] >>>> Video ready: output_video.mp4 
+[Link to Video](https://github.com/roman-smirnov/advanced-lane-detection/blob/master/project_video.mp4)
 
     
 
