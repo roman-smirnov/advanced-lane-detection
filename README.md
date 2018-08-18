@@ -311,6 +311,23 @@ all(ax.imshow(im) for im,ax in zip(persp, plt.subplots(3,3)[1].ravel()))
 
 ![png](/outputs/perspective.png)
 
+## Histogram Peaks
+We perform a histogram peak search to find the lane line locations in the image.
+This is implemented fully in the video pipeline. The idea is here is to search only around x coordinates with the most concentration of white pixels.
+
+
+```python
+MARGIN = 100
+img = persp[0].copy()
+hist = np.sum(img, axis=0)
+lhist, rhist = hist[:640], hist[640:]
+lcenter, rcenter = np.argmax(lhist), np.argmax(rhist)+640
+llo, lhi, rlo, rhi = lcenter-MARGIN, lcenter+MARGIN, rcenter-MARGIN, rcenter+MARGIN
+plt.subplot(1,2,1).imshow(img[:,llo:lhi]); plt.subplot(1,2,2).imshow(img[:,rlo:rhi])
+```
+
+![png](/outputs/histogram_peak_window.png)
+
 
 ## Polynomial Fit
 We divide the images into two halves containing each lanes. 
@@ -463,26 +480,35 @@ def binarize(img):
     return img
 ```
 
+### Histogram Peaks Window
+We only consider the points within the histogram peak windows.
+
+
+```python
+MARGIN = 50
+def get_windows(img):
+    hist = np.sum(img, axis=0)
+    lhist, rhist = hist[:640], hist[640:]
+    l_center, r_center = np.argmax(lhist), np.argmax(rhist)+640
+    llo, lhi, rlo, rhi = l_center-MARGIN, l_center+MARGIN, r_center-MARGIN, r_center+MARGIN
+    return llo, lhi, rlo, rhi
+```
+
 ### Polynomial Fit
 
 
 ```python
-def fit_left(img):
-    pts = np.argwhere(img>0)
-    lpts = pts[pts[...,1]<640].T
-    lpts = lpts if lpts.any() else np.array([[360,361,362],[320,320,320]], dtype=np.int32).T
-    lpoly = np.poly1d(np.polyfit(lpts[0],lpts[1],2))
-    return lpoly
+MIN_PIXEL_COUNT = 100
 ```
 
 
 ```python
-def fit_right(img):
+def fit_poly(img, lo, hi, old_pts):
     pts = np.argwhere(img>0)
-    rpts = pts[pts[...,1]>639].T
-    rpts = rpts if rpts.any() else np.array([[360,361,362],[960,960,960]], dtype=np.int32).T
-    rpoly = np.poly1d(np.polyfit(rpts[0],rpts[1],2))
-    return rpoly
+    pts = pts[np.logical_and(pts[...,1]>lo, pts[...,1]<hi)].T
+    pts = pts if pts.shape[1]>MIN_PIXEL_COUNT or old_pts is None else old_pts
+    poly = np.poly1d(np.polyfit(pts[0],pts[1],2))
+    return poly
 ```
 
 #### Temporal Filtering
@@ -490,12 +516,19 @@ Instead of just taking the raw calculated values, we reject overly large changes
 
 
 ```python
-def filter_poly(poly, old_poly):
-    diffs = np.abs(poly.coeffs-old_poly.coeffs)
-    poly = poly if diffs[0]<0.01 and diffs[1]<0.1 and diffs[2]<10.0 else 0.1*old_poly+0.9*poly
-    poly = poly if diffs[0]<0.1 and diffs[1]<1.0 and diffs[2]<100.0 else 0.9*old_poly+0.1*poly
-    poly = poly if diffs[0]<1.0 and diffs[1]<10.0 and diffs[2]<1000.0 else old_poly
-    return poly
+def filter_poly(lpoly, rpoly, old_lpoly, old_rpoly):
+    # error checks 
+    if old_rpoly is None or old_lpoly is None:
+        return lpoly,rpoly
+    # calc differences from last frame poly
+    ldif, rdif = np.abs(lpoly-old_lpoly), np.abs(rpoly-old_rpoly)
+    if ldif.shape[0]<2 or rdif.shape[0]<2:
+        return lpoly,rpoly
+    # interpoalte left polynomial
+    lpoly = old_lpoly if ldif[0]>0.001 or ldif[1]>1 or ldif[2]>320 else 0.3*lpoly+0.7*old_lpoly
+    # interpoalte right polynomial
+    rpoly = old_rpoly if rdif[0]>0.001 or rdif[1]>1 or rdif[2]>320 else 0.3*rpoly+0.7*old_rpoly
+    return lpoly,rpoly
 ```
 
 ### Line Extrapolation
@@ -509,27 +542,26 @@ def extrapolate(poly):
 ```
 
 ### Radius and Offset Calculations
-The radius is also filtered over time
+The radius is also interpolated over time.
 
 
 ```python
-def calc_radius(poly):
-    fderiv, sderiv = poly.deriv(m=1), poly.deriv(m=2)
-    rad = (1+fderiv(X_CENTER)**2)**1.5/np.abs(sderiv(640))
-    return rad*METERS_PER_VERTICAL_PIXEL
-
-def filter_radius(l_radius, r_radius, old_radius):
-    rad = (l_radius+r_radius)/2.
-    rad = rad if rad<999 else 0
-    rad = rad if abs(rad-old_radius) < 25 else 0.1*rad + 0.9*old_radius
+def calc_radius(lpoly, rpoly, old_radius):
+    lderiv1, lderiv2 = lpoly.deriv(m=1), lpoly.deriv(m=2)
+    rderiv1, rderiv2 = rpoly.deriv(m=1), rpoly.deriv(m=2)
+    lrad = (1+lderiv1(X_CENTER)**2)**1.5/np.abs(lderiv2(640))
+    rrad = (1+rderiv1(X_CENTER)**2)**1.5/np.abs(rderiv2(640))
+    rad = (lrad+rrad)*METERS_PER_VERTICAL_PIXEL/2
+    rad = rad if old_radius is None else 0.1*rad+old_radius*0.9
     return rad
 ```
 
 
 ```python
+BOTTOM_THIRD = 480
 def calc_offset(lpts, rpts):
-    cntr = (np.mean(rpts.T[0]) + np.mean(lpts.T[0]))/2
-    ofst = (cntr - X_CENTER)*METERS_PER_HORIZONTAL_PIXEL
+    xcntr = 0.5*(np.mean(lpts[lpts[:,1]>BOTTOM_THIRD]) + np.mean(rpts[rpts[:,1]>BOTTOM_THIRD]))
+    ofst = (xcntr - X_CENTER)*METERS_PER_HORIZONTAL_PIXEL
     return ofst
 ```
 
@@ -562,8 +594,8 @@ def draw_text(img, offset, radius):
 ```python
 def draw_lanes(img, lpts, rpts):
     ovr = np.zeros((720,1280,3), dtype=np.int32)
-    ovr = cv2.polylines(ovr,[lpts], isClosed=False, color=(255,255,255), thickness=43)
-    ovr = cv2.polylines(ovr,[rpts], isClosed=False, color=(255,255,255), thickness=43)
+    ovr = cv2.polylines(ovr,[lpts], isClosed=False, color=(255,255,255), thickness=63)
+    ovr = cv2.polylines(ovr,[rpts], isClosed=False, color=(255,255,255), thickness=63)
     ovr = cv2.fillConvexPoly(ovr,np.concatenate((lpts,rpts[::-1])),color=(0,0,193))
     ovr = cv2.warpPerspective(ovr,iMprsp,(1280,720),flags=cv2.INTER_NEAREST)
     img = np.maximum(img, ovr)
@@ -577,43 +609,47 @@ def draw_lanes(img, lpts, rpts):
 def process(img):
     img = undistort(img)
     binary = binarize(img)
-    left_poly, right_poly = fit_left(binary), fit_right(binary)
-    left_poly = filter_poly(left_poly, process.old_left_poly)
-    right_poly = filter_poly(right_poly, process.old_right_poly)
+    llo, lhi, rlo, rhi = get_windows(binary)
+    # fit polynomials
+    left_poly = fit_poly(binary,llo, lhi, process.old_left_points)
+    right_poly = fit_poly(binary,rlo,rhi, process.old_right_points)
+    left_poly, right_poly = filter_poly(left_poly,right_poly, process.old_left_poly, process.old_right_poly)
+    # extrapolate lane points
     left_points, right_points = extrapolate(left_poly), extrapolate(right_poly)
-    left_radius, right_radius = calc_radius(left_poly), calc_radius(right_poly)
-    radius = filter_radius(left_radius, right_radius, process.old_radius)
+    radius = calc_radius(left_poly, right_poly, process.old_radius)
     offset = calc_offset(left_points,right_points)
     # draw 
     img = draw_text(img, offset, radius)
     img = draw_lanes(img, left_points,right_points)
     # update filter params
     process.old_left_poly, process.old_right_poly = left_poly, right_poly
-    process.old_radius = radius
+    process.old_left_points, process.old_right_points = left_points, right_points
+    process.old_radius=radius
     return img
 
-process.old_left_poly = np.poly1d(np.polyfit(np.array([320,320,320]),np.array([360,361,362]),2))
-process.old_right_poly = np.poly1d(np.polyfit(np.array([960,960,960]),np.array([360,361,362]),2))
-process.old_radius = 100
+process.old_left_points = None
+process.old_right_points = None
+process.old_left_poly = None
+process.old_right_poly = None
+process.old_radius = None
 ```
 
 ### Video Frame Extraction
 
 #### Project Video
-[Link to Video](output_project_video.mp4)
-![image from video](/outputs/lane_detection_2.png)
+
 
 ```python
 video = VideoFileClip("project_video.mp4")
 processed_video = video.fl_image(process)
-processed_video.write_videofile("output_project_video.mp4", audio=False)
+processed_video.write_videofile("output_video.mp4", audio=False, progress_bar=False)
 ```
 
-    [MoviePy] >>>> Building video output_project_video.mp4
-    [MoviePy] Writing video output_project_video.mp4
-
+    [MoviePy] >>>> Building video output_video.mp4
+    [MoviePy] Writing video output_video.mp4
     [MoviePy] Done.
-    [MoviePy] >>>> Video ready: output_project_video.mp4 
+    [MoviePy] >>>> Video ready: output_video.mp4 
+
     
 
 
