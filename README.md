@@ -9,6 +9,8 @@ Accurate and robust detection of lane lines, lane curvature, and vehicle positio
 
 ![png](/outputs/lane_detection.png)
 
+![Link to Video](https://github.com/roman-smirnov/advanced-lane-detection/blob/master/project_video.mp4)
+
 ###  Implementation Outline
 * Compute the camera calibration matrix and distortion coefficients given a set of chessboard images.
 * Apply a distortion correction to raw images.
